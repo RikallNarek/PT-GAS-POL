@@ -37,7 +37,7 @@ final class WarehouseService
             );
             $statement->execute([$id, $code, $name, $address]);
         } catch (PDOException $exception) {
-            if ($exception->getCode() === '23000') {
+            if ($this->isDuplicateKey($exception)) {
                 throw new ApiException(409, 'Warehouse code already exists');
             }
             throw $exception;
@@ -51,11 +51,11 @@ final class WarehouseService
         $fields = [];
         $values = [];
         foreach (['code', 'name', 'address', 'is_active'] as $field) {
-            if (!array_key_exists($field, $input)) {
+            if (!\array_key_exists($field, $input)) {
                 continue;
             }
             if ($field === 'is_active') {
-                if (!is_bool($input[$field])) {
+                if (!\is_bool($input[$field])) {
                     throw new ApiException(422, 'is_active must be a boolean');
                 }
                 $fields[] = 'is_active = ?';
@@ -76,7 +76,7 @@ final class WarehouseService
             $statement = $this->db->prepare('UPDATE warehouses SET ' . implode(', ', $fields) . ' WHERE id = ?');
             $statement->execute($values);
         } catch (PDOException $exception) {
-            if ($exception->getCode() === '23000') {
+            if ($this->isDuplicateKey($exception)) {
                 throw new ApiException(409, 'Warehouse code already exists');
             }
             throw $exception;
@@ -91,7 +91,7 @@ final class WarehouseService
             $statement = $this->db->prepare('DELETE FROM warehouses WHERE id = ?');
             $statement->execute([$id]);
         } catch (PDOException $exception) {
-            if ($exception->getCode() === '23000') {
+            if ($this->isForeignKeyConstraintViolation($exception)) {
                 throw new ApiException(409, 'Warehouse is referenced by stock or order records');
             }
             throw $exception;
@@ -121,12 +121,12 @@ final class WarehouseService
     {
         $warehouseId = $this->requiredString($input, 'warehouse_id');
         $productId = $this->requiredString($input, 'product_id');
-        $delta = array_key_exists('quantity_delta', $input) ? $this->integer($input, 'quantity_delta') : 0;
-        if ($delta === 0 && !array_key_exists('min_stock', $input)) {
+        $delta = \array_key_exists('quantity_delta', $input) ? $this->integer($input, 'quantity_delta') : 0;
+        if ($delta === 0 && !\array_key_exists('min_stock', $input)) {
             throw new ApiException(422, 'Provide a non-zero quantity_delta or min_stock');
         }
         $reason = $delta !== 0 ? $this->requiredString($input, 'reason') : 'Minimum stock update';
-        $minStock = array_key_exists('min_stock', $input) ? $this->integer($input, 'min_stock') : null;
+        $minStock = \array_key_exists('min_stock', $input) ? $this->integer($input, 'min_stock') : null;
         if ($minStock !== null && $minStock < 0) {
             throw new ApiException(422, 'min_stock must be zero or greater');
         }
@@ -200,7 +200,7 @@ final class WarehouseService
             return [];
         }
         $ids = array_column($orders, 'id');
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $placeholders = \implode(',', \array_fill(0, \count($ids), '?'));
         $items = $this->db->prepare(
             "SELECT * FROM warehouse_restock_order_items WHERE restock_order_id IN ({$placeholders}) ORDER BY product_id"
         );
@@ -220,7 +220,7 @@ final class WarehouseService
         $reason = $this->optionalString($input, 'reason');
         return $this->transaction(function () use ($id, $reason): array {
             $order = $this->lockRestockOrder($id);
-            if (!in_array($order['status'], ['WAITING_SUPPLIER', 'RESERVED'], true)) {
+            if (!\in_array($order['status'], ['WAITING_SUPPLIER', 'RESERVED'], true)) {
                 throw new ApiException(409, 'Only waiting or reserved orders can be rejected');
             }
             if ($order['status'] === 'RESERVED') {
@@ -259,7 +259,7 @@ final class WarehouseService
             $statement->execute([$id, $supplierId, 'REQUESTED']);
             foreach ($items as $item) {
                 $warehouseId = $item['warehouse_id'] ?? $defaultWarehouseId;
-                if (!is_string($warehouseId) || $warehouseId === '') {
+                if (!\is_string($warehouseId) || $warehouseId === '') {
                     throw new ApiException(422, 'Provide warehouse_id for the request or each item');
                 }
                 $this->assertActiveWarehouse($warehouseId);
@@ -302,7 +302,7 @@ final class WarehouseService
             return [];
         }
         $ids = array_column($requests, 'id');
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $placeholders = \implode(',', \array_fill(0, \count($ids), '?'));
         $items = $this->db->prepare(
             "SELECT * FROM purchase_request_items WHERE purchase_request_id IN ({$placeholders}) ORDER BY product_id"
         );
@@ -324,7 +324,7 @@ final class WarehouseService
         $receiptId = $this->uuid();
         return $this->transaction(function () use ($poId, $items, $receiptId): array {
             $purchase = $this->lockPurchaseRequest($poId);
-            if (!in_array($purchase['status'], ['DELIVERED', 'PARTIALLY_RECEIVED'], true)) {
+            if (!\in_array($purchase['status'], ['DELIVERED', 'PARTIALLY_RECEIVED'], true)) {
                 throw new ApiException(409, 'Goods can only be received after the PO is delivered');
             }
             $statement = $this->db->prepare(
@@ -407,13 +407,13 @@ final class WarehouseService
 
     private function inputItems(array $input): array
     {
-        if (!isset($input['items']) || !is_array($input['items']) || $input['items'] === []) {
+        if (!isset($input['items']) || !\is_array($input['items']) || $input['items'] === []) {
             throw new ApiException(422, 'items must be a non-empty array');
         }
         $items = [];
         $keys = [];
         foreach ($input['items'] as $item) {
-            if (!is_array($item) || array_is_list($item)) {
+            if (!\is_array($item) || \array_is_list($item)) {
                 throw new ApiException(422, 'Each item must be an object');
             }
             $productId = $this->requiredString($item, 'product_id');
@@ -585,7 +585,7 @@ final class WarehouseService
         $statement = $this->db->prepare($sql);
         $statement->execute($values);
         $rows = $statement->fetchAll();
-        if (count($rows) !== 1) {
+        if (\count($rows) !== 1) {
             throw new ApiException(422, 'Receipt item must match exactly one PO line; include warehouse_id if needed');
         }
         return $rows[0];
@@ -605,7 +605,7 @@ final class WarehouseService
     private function requiredString(array $input, string $key): string
     {
         $value = $input[$key] ?? null;
-        if (!is_string($value) || trim($value) === '') {
+        if (!\is_string($value) || trim($value) === '') {
             throw new ApiException(422, "{$key} is required and must be a non-empty string");
         }
         return trim($value);
@@ -613,10 +613,10 @@ final class WarehouseService
 
     private function optionalString(array $input, string $key): ?string
     {
-        if (!array_key_exists($key, $input) || $input[$key] === null) {
+        if (!\array_key_exists($key, $input) || $input[$key] === null) {
             return null;
         }
-        if (!is_string($input[$key])) {
+        if (!\is_string($input[$key])) {
             throw new ApiException(422, "{$key} must be a string or null");
         }
         return trim($input[$key]);
@@ -625,7 +625,7 @@ final class WarehouseService
     private function integer(array $input, string $key): int
     {
         $value = $input[$key] ?? null;
-        if (!is_int($value)) {
+        if (!\is_int($value)) {
             throw new ApiException(422, "{$key} must be an integer");
         }
         return $value;
@@ -649,10 +649,22 @@ final class WarehouseService
     private function uuid(): string
     {
         $bytes = random_bytes(16);
-        $bytes[6] = chr((ord($bytes[6]) & 0x0f) | 0x40);
-        $bytes[8] = chr((ord($bytes[8]) & 0x3f) | 0x80);
+        $bytes[6] = \chr(\ord($bytes[6]) & 0x0f | 0x40);
+        $bytes[8] = \chr(\ord($bytes[8]) & 0x3f | 0x80);
         $hex = bin2hex($bytes);
         return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4) . '-'
             . substr($hex, 16, 4) . '-' . substr($hex, 20);
+    }
+
+    private function isDuplicateKey(PDOException $exception): bool
+    {
+        return ($exception->errorInfo[0] ?? null) === '23000'
+            && (int) ($exception->errorInfo[1] ?? 0) === 1062;
+    }
+
+    private function isForeignKeyConstraintViolation(PDOException $exception): bool
+    {
+        return ($exception->errorInfo[0] ?? null) === '23000'
+            && (int) ($exception->errorInfo[1] ?? 0) === 1451;
     }
 }
